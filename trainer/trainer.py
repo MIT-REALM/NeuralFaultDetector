@@ -2,7 +2,6 @@ import torch
 from torch import nn
 import numpy as np
 from pytictoc import TicToc
-from .FxTS_GF import FxTS_Momentum
 
 # torch.autograd.set_detect_anomaly(True)
 
@@ -494,11 +493,11 @@ class Trainer(object):
         traj_len = self.traj_len
 
         if gamma_type == 'deep':
-            batch_size = 500000
+            batch_size = 100000
             if self.model_factor == 0:
-                batch_size = 700000
+                batch_size = 100000
         else:
-            batch_size = 50000
+            batch_size = 10000
 
         if batch_size > self.dataset.n_pts:
             batch_size = self.dataset.n_pts

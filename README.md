@@ -4,7 +4,7 @@ FTneuralCBF is a toolbox for designing NN-based fault-tolerant control as well a
 
 ## Installation
 
-git clone https://github.com/kunalgarg42/FTneuralCBF.git
+git clone https://github.com/kunalgarg42/NeuralFaultDetector.git
 
 conda create --name [CONDA ENV NAME] python=3.9
 

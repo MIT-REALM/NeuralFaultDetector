@@ -3,8 +3,6 @@ import sys
 import torch
 import numpy as np
 import argparse
-import random
-import platform
 
 sys.path.insert(1, os.path.abspath('..'))
 sys.path.insert(1, os.path.abspath('.'))
@@ -15,7 +13,7 @@ from trainer import config
 from trainer.datagen import Dataset_with_Grad
 from trainer.trainer import Trainer
 from trainer.utils import Utils
-from trainer.NNfuncgrad_CF import CBF, Gamma_linear_LSTM_output, Gamma_linear_deep_nonconv_output
+from trainer.NNfuncgrad_CF import Gamma_linear_LSTM_output, Gamma_linear_deep_nonconv_output
 
 # import matplotlib.pyplot as plt
 
@@ -61,7 +59,7 @@ nominal_params = config.CRAZYFLIE_PARAMS
 
 fault = nominal_params["fault"]
 
-init_param = 1  # int(input("use previous weights? (0 -> no, 1 -> yes): "))
+init_param = 0 # int(input("use previous weights? (0 -> no, 1 -> yes): "))
 
 n_sample = 1200
 
@@ -71,40 +69,22 @@ fault_control_index = 1
 
 t = TicToc()
 
-gpu_id = 0 # torch.cuda.current_device()
-
-if platform.uname()[1] == 'realm2':
-    gpu_id = 1
+gpu_id = 0 if torch.cuda.is_available() else -1
 
 def main(args):
-    if platform.uname()[1] == 'realm2':
-        gpu_id = args.gpu
-
-        if gpu_id >= 0:
-            use_cuda = True
-        else:
-            use_cuda = False
-
-        if gpu_id >= 0:
-            device = torch.device(args.gpu if use_cuda else 'cpu')
-        else:
-            device = torch.device('cpu')
-        print(f'> Training with {device}')
-
-    else:
-        gpu_id = args.gpu
-        use_cuda = torch.cuda.is_available() and not args.cpu
-        if use_cuda:
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
-        device = torch.device('cuda' if use_cuda else 'cpu')
-        print(f'> Training with {device}')
+    
+    gpu_id = args.gpu
+    use_cuda = torch.cuda.is_available() and not args.cpu
+    if use_cuda:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+    device = torch.device('cuda' if use_cuda else 'cpu')
+    print(f'> Training with {device}')
 
     fault = 1
     dt = args.dt
     fault_control_index = args.fault_index
     traj_len = args.traj_len
     gamma_type = args.gamma_type
-    # gamma_type = 'LSTM small'
     num_traj_factor = 2
     
     if args.use_model == 0:
@@ -125,9 +105,7 @@ def main(args):
     dynamics = CrazyFlies(x=x0, goal=xg, nominal_params=nominal_params, dt=dt)
     util = Utils(n_state=n_state, m_control=m_control, dyn=dynamics, params=nominal_params, fault=fault,
                  fault_control_index=fault_control_index)
-    cbf = CBF(dynamics=dynamics, n_state=n_state, m_control=m_control, fault=fault,
-              fault_control_index=fault_control_index)
-    
+
     if gamma_type == 'deep':
         gamma = Gamma_linear_deep_nonconv_output(y_state=y_state, m_control=m_control, traj_len=traj_len, model_factor=model_factor)
     elif gamma_type == 'LSTM':
@@ -150,12 +128,9 @@ def main(args):
                     gamma.train()
             except:
                 print("No pre-train data available")
-    
-    cbf.load_state_dict(torch.load('./data/CF_cbf_NN_weightsCBF.pth'))
-    cbf.eval()
 
     dataset = Dataset_with_Grad(y_state=y_state, n_state=n_state, m_control=m_control, train_u=0, buffer_size=n_sample*500, traj_len=traj_len)
-    trainer = Trainer(cbf, None, dataset, gamma=gamma, n_state=n_state, m_control=m_control, j_const=2, dyn=dynamics,
+    trainer = Trainer(None, None, dataset, gamma=gamma, n_state=n_state, m_control=m_control, j_const=2, dyn=dynamics,
                       dt=dt, action_loss_weight=0.001, params=nominal_params,
                       fault=fault, gpu_id=gpu_id, num_traj=n_sample, traj_len=traj_len,
                       fault_control_index=fault_control_index, model_factor=model_factor, device=device)
@@ -266,35 +241,7 @@ def main(args):
                     dataset.add_data(output_traj[:, k-traj_len + 1:k + 1, :].cpu(), model_factor * output_traj_diff[:, k-traj_len + 1:k + 1, :].cpu(), u_traj[:, k-traj_len + 1:k + 1, :].cpu(), torch.ones(n_sample, m_control))
                 else:
                     dataset.add_data(output_traj[:, k-traj_len + 1:k + 1, :].cpu(), model_factor * output_traj_diff[:, k-traj_len + 1:k + 1, :].cpu(), u_traj[:, k-traj_len + 1:k + 1, :].cpu(), gamma_actual_bs.cpu())
-                # if k > 1.5 * traj_len:
-                #     plt.figure()
-                #     plt.subplot(3, 4, 1)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 0].T)
-                #     plt.subplot(3, 4, 2)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 1].T)
-                #     plt.subplot(3, 4, 3)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 2].T)
-                #     plt.subplot(3, 4, 4)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 3].T)
-                #     plt.subplot(3, 4, 5)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 4].T)
-                #     plt.subplot(3, 4, 6)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 5].T)
-                #     plt.subplot(3, 4, 7)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 6].T)
-                #     plt.subplot(3, 4, 8)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 7].T)  
-                #     plt.subplot(3, 4, 9)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 8].T)
-                #     plt.subplot(3, 4, 10)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 9].T)
-                #     plt.subplot(3, 4, 11)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 10].T)
-                #     plt.subplot(3, 4, 12)
-                #     plt.plot(state_traj[:, k-traj_len + 1:k + 1, 11].T)
-                #     plt.savefig('test.png')
-                #     print(asas)
-
+        
         loss_np, acc_np = trainer.train_gamma(gamma_type)
 
         time_iter = t.tocvalue()
